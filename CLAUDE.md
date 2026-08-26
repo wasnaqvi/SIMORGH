@@ -4,13 +4,14 @@ Guidance for Claude Code (claude.ai/code) working in this repository.
 
 ## Overview
 
-SIMORGH is an **amortized, calibrated atmospheric retrieval engine for
-uniform sub-Neptune surveys, with a population-inference contract**.
-JWST NIRSpec/G395H transmission first; Ariel-ready by construction.
+SIMORGH is an **amortized atmospheric retrieval engine for uniform
+sub-Neptune surveys, with the calibration tests that show whether its
+posteriors can be trusted**. JWST NIRSpec/G395H transmission first;
+Ariel-ready by construction.
 
-It performs inference *and* audits it. A trained model is only usable
-once it ships with its calibration record. That is the whole design
-thesis — see [Invariants](#invariants-do-not-break-these).
+It performs inference *and* checks it. A trained model is not treated as
+usable until its calibration results exist alongside it. That is the
+whole design thesis — see [Invariants](#invariants-do-not-break-these).
 
 Development happens on the laptop; **all real compute runs on DRAC Fir**
 (H100 GPUs). See [FIR.md](FIR.md) for the runbook and
@@ -28,8 +29,8 @@ deliberate and load-bearing:
   variants — the validation data that makes calibration claims testable
   rather than asserted.
 - Sub-Neptunes are themselves the population science case
-  (mass–metallicity, radius-valley chemistry). Beachhead and endgame
-  align.
+  (mass–metallicity, radius-valley chemistry), so the first targets and
+  the eventual science are the same planets.
 
 **Do not widen the scope opportunistically.** Adding emission, direct
 imaging, or hot Jupiters multiplies the grid cost and dilutes the
@@ -53,10 +54,12 @@ Published record, as of the design date:
   on "calibration under distribution shift," asks for one consolidated
   validated tool (Priority 3), and specifies a validation protocol
   (Appendix F3).
-- Gravitational-wave astronomy already solved the population half
-  (Leyde et al. 2024, PRD 109 064056: NPE hierarchical inference with
-  selection effects). SIMORGH **ports** that playbook. Cite it; never
-  present the hierarchical machinery as invented here.
+- The hierarchical machinery is **not new**. Posterior reweighting under
+  an interim prior is standard practice (Hogg, Myers & Bovy 2010, ApJ
+  725, 2166) and has been applied at scale in other areas of astronomy.
+  Cite it properly; never present it as invented here. What is unclaimed
+  is applying it to amortized exoplanet retrieval posteriors that have
+  been calibrated first.
 
 SIMORGH's contribution is therefore: joint (not 1D) posteriors, one
 network across a planet population, coverage actually performed at
@@ -78,7 +81,7 @@ simorgh/
     grid.py             sharded cluster grids: hashing, idempotence, guards
   models/
     embedding.py        mask-aware DeepSets over (wavelength, depth, error)
-    npe.py              AmortizedPosterior: flow + population contract
+    npe.py              AmortizedPosterior: flow + population exports
   diagnostics/
     sbc.py              simulation-based calibration ranks + KS p-values
     tarp.py             TARP joint expected coverage
@@ -112,7 +115,7 @@ scripts/fir/            cluster chain; generate_jobs.py sizes all SLURM jobs
 
 ## Invariants (do not break these)
 
-1. **The population contract.** Every trained model must provide
+1. **Population exports.** Every trained model must provide
    `sample`, physical-space `log_prob`, the stored interim prior, and
    `population_export()`. Hierarchical reweighting divides by the interim
    prior; samples alone cannot feed a population loop. This is enforced
@@ -243,5 +246,5 @@ messages.
 - Edit a grid's `meta.json` in place (except raising `n_shards`).
 - Hand-write sbatch files.
 - Import the reduction pipeline from SIMORGH.
-- Claim the hierarchical machinery as novel — it is a port from the
-  gravitational-wave literature and must be cited as such.
+- Claim the hierarchical machinery as novel — it is standard practice from the
+  wider statistics literature and must be cited as such.
