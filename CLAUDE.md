@@ -14,8 +14,7 @@ usable until its calibration results exist alongside it. That is the
 whole design thesis — see [Invariants](#invariants-do-not-break-these).
 
 Development happens on the laptop; **all real compute runs on DRAC Fir**
-(H100 GPUs). See [FIR.md](FIR.md) for the runbook and
-[TARGETS.md](TARGETS.md) for what results to aim for.
+(H100 GPUs). See [FIR.md](FIR.md) for the runbook.
 
 ## Scope, and why it is this narrow
 

@@ -180,9 +180,6 @@ loading refuses a grid that is incomplete or assembled from
 inconsistent pieces, since training on part of a grid quietly changes
 the prior you are sampling from.
 
-[TARGETS.md](TARGETS.md) records what the results should look like and
-what would count as failure.
-
 ## Status
 
 Working: the network and training, calibration diagnostics, hierarchical

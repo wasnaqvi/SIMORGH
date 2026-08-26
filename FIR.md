@@ -155,7 +155,7 @@ A training job that exits 0 has proven only that the loss went down.
 Before believing anything scientific:
 
 - **`certificate.json` verdict.** SBC KS p-values per parameter and TARP
-  joint max deviation, against the TARGETS.md thresholds. A model that
+  joint max deviation, against the thresholds in `certify.py`. A model that
   fails here is not usable for population work no matter how good the
   posteriors look by eye.
 - **Loss curve shape** in `history.json`. A validation loss that plateaus

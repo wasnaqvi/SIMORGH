@@ -8,7 +8,7 @@
 
 Emits certificate.json: SBC rank statistics + KS p-values per parameter,
 TARP joint expected-coverage curve and its maximum deviation, with the
-pass/fail thresholds from TARGETS.md Result 2 applied explicitly.
+pass/fail thresholds applied explicitly.
 
 This is the result no published exoplanet SBI paper currently reports;
 FASTER (Lueber et al. 2025, Sec 4.2) cites the procedure as possible and
@@ -32,7 +32,9 @@ from simorgh.diagnostics import (sbc_pvalues, sbc_ranks,  # noqa: E402
 from simorgh.models import AmortizedPosterior  # noqa: E402
 from simorgh.simulate.grid import grid_prior, load_grid  # noqa: E402
 
-SBC_P_THRESHOLD = 0.01      # TARGETS.md Result 2
+# A calibrated posterior gives uniform SBC ranks; 0.01 is loose enough
+# not to fire on ordinary sampling noise at ~1000 simulations.
+SBC_P_THRESHOLD = 0.01
 TARP_MAX_DEV = 0.03
 
 

@@ -1,5 +1,6 @@
 # Planning/strategy notes — kept local, never published.
 AUDIT_BRIEF_FOR_FABLE5.txt
+TARGETS.md
 *.private.md
 
 __pycache__/
