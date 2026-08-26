@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simorgh"
+version = "0.1.0"
+description = "Amortized, calibrated atmospheric retrieval for uniform sub-Neptune surveys, with a population-inference contract"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Wasi Naqvi" }]
+dependencies = [
+    "numpy",
+    "scipy",
+    "torch>=2.0",
+    "zuko>=1.0",
+]
+
+[project.optional-dependencies]
+plots = ["matplotlib"]
+taurex = ["taurex"]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["simorgh*"]

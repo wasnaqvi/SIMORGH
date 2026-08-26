@@ -1,0 +1,11 @@
+# Planning/strategy notes — kept local, never published.
+AUDIT_BRIEF_FOR_FABLE5.txt
+*.private.md
+
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+runs/
+*.pt
+.DS_Store
