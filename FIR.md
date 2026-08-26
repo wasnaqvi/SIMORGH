@@ -149,6 +149,66 @@ Writes `certificate.json` and exits non-zero on FAIL, so a failed
 calibration is visible in `sacct` rather than buried in a log. `certify`
 warns if the certification grid hash matches the training grid.
 
+## When a job fails
+
+Two different questions, with different answers. Ask both.
+
+### Which SLURM tasks failed
+
+```bash
+# everything that did not end cleanly, since a given date
+sacct -X -s FAILED,TIMEOUT,OUT_OF_MEMORY,NODE_FAIL --starttime=today \
+      --format=JobID%20,JobName%18,State%16,Elapsed,ExitCode
+```
+
+`-X` collapses the `.batch`/`.extern` steps so each job is one row. Drop
+it when you want `MaxRSS`, which only appears on the step rows:
+
+```bash
+sacct -j <JOBID> --format=JobID,State,Elapsed,MaxRSS,ReqMem,ExitCode
+seff <JOBID>            # same thing, human-readable, incl. memory efficiency
+```
+
+What the states mean here:
+
+| State | Cause | Fix |
+|---|---|---|
+| `TIMEOUT` | hit `--time` | training resumes from its checkpoint — just resubmit. For simulation, raise the walltime in `generate_jobs.py` |
+| `OUT_OF_MEMORY` | exceeded `--mem` | check `MaxRSS`, raise the value in `generate_jobs.py`, never in the sbatch by hand |
+| `NODE_FAIL` | hardware glitch | rare; resubmit |
+| `CANCELLED` | you or the scheduler killed it | check whether the allocation is depleted |
+
+For an array, the failed task indices in a form you can paste straight
+back into `--array`:
+
+```bash
+sacct -X -n -j <ARRAY_JOB_ID> -s FAILED,TIMEOUT,OUT_OF_MEMORY,NODE_FAIL \
+      --format=JobID | sed 's/.*_//' | paste -sd,
+```
+
+Python tracebacks land in the job logs, not in `sacct`:
+
+```bash
+grep -l -iE "error|traceback" ~/simorgh/jobs/logs/*.out
+```
+
+### Which shards are actually missing
+
+```bash
+python scripts/fir/grid_status.py --grid-dir ~/scratch/simorgh/grids/taurex_v1
+```
+
+**This is the authoritative one for deciding what to resubmit**, and it
+does not always agree with `sacct`. A task can fail *after* writing a
+complete shard, in which case there is nothing to redo; a task can also
+report `COMPLETED` having skipped a shard that already existed. The
+scheduler knows about processes, not about products.
+
+`grid_status.py` exits non-zero and prints a ready-made `--array=` range
+covering exactly the missing shards. Since generation is idempotent you
+can also just resubmit the whole array — completed shards are skipped in
+milliseconds — but the narrow range is kinder to the queue.
+
 ## VERIFY THE STATISTICS, NOT THE EXIT CODE
 
 A training job that exits 0 has proven only that the loss went down.
