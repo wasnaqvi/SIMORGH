@@ -1,158 +1,214 @@
 # SIMORGH
 
-Amortized, calibrated atmospheric retrieval for **uniform sub-Neptune
-surveys**, with a **population-inference contract**. JWST NIRSpec/G395H
-transmission first; Ariel-ready by construction.
+Fast atmospheric retrieval for sub-Neptunes, with the calibration tests
+that tell you whether the answers can be trusted.
 
-SIMORGH performs inference *and* audits it: every trained model ships with
-its calibration record (SBC + TARP), an out-of-distribution gate, and the
-density-evaluation exports a hierarchical population analysis needs.
+SIMORGH trains a neural network once on a grid of forward models, after
+which retrieving a transmission spectrum takes about a second instead of
+hours of nested sampling. It is built for JWST NIRSpec/G395H
+observations of sub-Neptunes, and designed so the resulting posteriors
+can be fed straight into a population-level analysis.
 
-## Why this exists (design record, 2026-08-26)
+## The problem
 
-Conclusions from the audited planning record (`AUDIT_BRIEF_FOR_FABLE5.txt`
-plus an independent verification pass):
+A single atmospheric retrieval with nested sampling needs 10^5–10^7
+forward model evaluations. That is fine for one planet. It becomes
+painful when you want to compare several model assumptions on the same
+data, and it becomes impractical for the kind of study the field is
+moving towards: dozens of planets reduced uniformly, analysed
+identically, and interpreted together as a population.
 
-1. **Do not build another standalone estimator.** Six-plus groups have
-   shipped amortized SBI retrieval demos (ExoGAN, Vasist+23, FlopPITy,
-   Aubin+23, Yip+24a, fm4ar, FASTER). None is a community tool.
-2. **The amortization-across-choices problem is the moat.** Training is per
-   forward model / prior / noise model. Whoever ships *one* network that is
-   amortized over planets, noise levels, binnings and masked channels — with
-   trust attached — ships the tool. Nobody has.
-3. **The gaps the incumbents named in print** (the reason this scope):
-   FASTER (Lueber et al. 2025, ApJL 984 L1) shipped 1D marginals, one
-   planet, no coverage test, and calls in-distribution verification of real
-   data "a key open issue." The Ariel MLWG white paper (Yip et al. 2026)
-   gates SBI adoption on "calibration under distribution shift" and asks
-   for one consolidated validated tool (Priority 3, Appendix F3).
-4. **The gravitational-wave field already solved the population side**
-   (Dingo; Leyde et al. 2024, PRD 109 064056 — NPE hierarchical inference
-   with selection effects). SIMORGH ports that playbook to transmission
-   spectroscopy; it does not pretend to invent it.
-5. **Uniform sub-Neptunes first.** A homogeneous survey (uniform reduction,
-   uniform fitting, per-planet nested-sampling posteriors, controlled
-   reduction variants) is both the validation set and the first population
-   science case (mass–metallicity, radius-valley chemistry). The Patchwork
-   survey delivers exactly this.
+Simulation-based inference offers a way out. Instead of evaluating the
+forward model during inference, you spend the compute up front —
+simulate a large grid, train a network to map spectra to posteriors, and
+then apply it to as many spectra as you like at negligible cost. The
+idea has been demonstrated several times for exoplanet atmospheres:
 
-### GW → exoplanet mapping
+- **Zingales & Waldmann (2018)** — ExoGAN, the first amortized posterior
+  for transmission spectra.
+- **Vasist et al. (2023)** — neural posterior estimation with
+  petitRADTRANS, seconds per spectrum, with coverage and
+  posterior-predictive checks.
+- **Ardévol Martínez et al. (2024)** — FlopPITy, sequential neural
+  posterior estimation inside ARCiS, including self-consistent models.
+- **Gebhard et al. (2025)** — fm4ar, flow matching combined with neural
+  importance sampling, which recovers the exact posterior and the
+  Bayesian evidence.
+- **Lueber et al. (2025)** — FASTER, which showed that a neural ratio
+  estimator reproduces both nested-sampling marginals *and* Bayesian
+  model probabilities, on mock spectra and on real WASP-39b NIRSpec
+  PRISM data, at roughly one second per retrieval against 8–10 GPU-hours
+  for the nested-sampling equivalent.
 
-| GW (Dingo / Leyde et al.)          | SIMORGH                                        |
-|------------------------------------|------------------------------------------------|
-| event strain                       | G395H transmission spectrum                    |
-| detector PSD conditioning          | per-channel error bars + mask conditioning     |
-| extrinsic parameters               | r_p/r_s, log g amortized as parameters (FASTER gap G2) |
-| dingo-IS exactness recovery        | importance sampling vs the forward-model likelihood (planned) |
-| injection campaigns → p(det)       | selection-function interface (`population/`)   |
-| catalog → hyperposterior reweight  | `population_export()` + `hyper_log_likelihood` |
+So the speed problem is, in an important sense, solved. Several times
+over. **Building another estimator is not the point of this project.**
 
-## What is implemented (v0.1)
+## What is still missing
 
-- **`simorgh.spectra`** — `Spectrum`: variable-length channels
-  (wavelength, depth, error) + validity mask, all first-class.
-- **`simorgh.priors`** — evaluable `BoxPrior`; `subneptune_prior()` spans
-  the survey box (T_eq 300–1100 K, Z 1–1000× solar, gray cloud deck,
-  r_p/r_s, log g) so amortization is over planets, not per planet.
-- **`simorgh.simulate`** — simulator protocol; analytic `ToySubNeptune`
-  with the right degeneracy structure (H/R\*, mu(Z), cloud muting, CO2 ∝
-  Z² marker) for end-to-end development; pinned-provenance TauREx adapter
-  for the production grid.
-- **`simorgh.data`** — noise injection *outside* the simulator:
-  per-spectrum noise-level draws, wavelength-dependent shape, channel
-  dropout → the network trains amortized over noise levels and masks
-  (fm4ar's conditioning idea, extended to the grid itself).
-- **`simorgh.models`** — mask-aware DeepSets embedding (grid-length
-  agnostic; attention upgrade isolated) + neural spline flow (zuko).
-  The flow models logit-box coordinates: posterior support equals the
-  prior box by construction, and `log_prob` returns **physical-space
-  densities** (Jacobian included).
-- **`simorgh.train`** — plain training loop (val selection, cosine decay);
-  cluster scale-out deliberately kept out of the library.
-- **`simorgh.diagnostics`** — SBC (Talts et al. 2018) and TARP (Lemos et
-  al. 2023). In the test suite these caught a genuinely miscalibrated
-  undertrained flow on `rp_rs` — they are load-bearing, not decoration.
-- **`simorgh.population`** — hierarchical reweighting with the interim
-  prior (Hogg, Myers & Bovy 2010), ESS guard (raise inside MCMC, −inf for
-  grid scans), Gaussian demo population, selection-function interface.
-  **Honest caveat:** JWST target selection is committee-driven; the
-  default alpha=1 means hyperposteriors are conditional on the observed
-  target list. Ariel's defined tiers make alpha computable later.
-- **`simorgh.gate`** — sim-vs-real density-ratio classifier: held-out AUC
-  as the shift score, per-spectrum log-ratios as the future weighted-CP
-  input (Tibshirani et al. 2019).
-- **`simorgh.simulate.grid`** — sharded cluster grids: immutable hashed
-  definitions, idempotent shard generation, atomic writes, and a load
-  that refuses incomplete or cross-grid shard sets rather than training
-  on them.
-- **`scripts/fir/`** — the cluster chain (`define_grid`,
-  `simulate_shard`, `grid_status`, `train_model`, `certify`) plus
-  `generate_jobs.py`, the single source of truth for SLURM resources.
-- **`simorgh.io`** — file-boundary loader for survey products.
-  **SIMORGH never imports the survey pipeline**; spectra arrive as plain
-  tables + JSON sidecars, keeping both codebases independently versioned.
+Two things, and both are acknowledged in the literature rather than
+invented here.
 
-The **population contract**: every trained model must provide
-`sample`, physical-space `log_prob`, the stored interim prior, and
-`population_export()`. This is enforced by tests from v0.1 so the
-hierarchical layer is a consumer, never a retrofit — the structural
-mistake to avoid from FASTER's 1D marginals.
+**Whether the posteriors are actually calibrated.** Lueber et al. note
+that amortization makes rigorous calibration possible and leave it to
+future work; their validation is agreement with MultiNest on one mock
+and one real spectrum. The Ariel Machine Learning Working Group white
+paper (Yip et al. 2026) is blunter: posterior calibration is
+"underexplored," and full simulation-based inference is held back
+pending better demonstration of "calibration under distribution shift."
+Appendix F3 of that paper sets out exactly what a validation protocol
+should contain. Nobody has run it end to end.
 
-## Where it runs
+**Whether real data resembles the training set.** Fitting the real
+WASP-39b spectrum, Lueber et al. find roughly 100 ppm of excess scatter
+and conclude the observation may lie outside the distribution the
+network was trained on — calling this "a key open issue." This matters
+because a network given a spectrum unlike anything it was trained on
+will still return a confident-looking posterior. Nothing about it looks
+wrong.
 
-Development and diagnostics on the laptop; **all real compute on DRAC
-Fir** (H100s), via `scripts/fir/`. See [FIR.md](FIR.md) for the runbook:
-environment setup, the define → simulate → verify → train → certify
-chain, and the compute-discipline rules inherited from Patchwork.
+There is a third gap that only appears at population scale. Published
+demonstrations estimate one-dimensional marginals for a single planet.
+A population study needs the joint posterior, one network valid across
+many planets, and posterior densities that can be reweighted under a
+population model. It also needs the per-planet posteriors to be
+genuinely calibrated, because a bias that is tolerable in one retrieval
+does not average away when you combine fifty of them — statistical
+uncertainty shrinks as 1/sqrt(N) while a systematic offset stays put,
+so it eventually dominates.
 
-The expensive object is the **clean forward-model grid**, generated once
-as a SLURM array and reused across every noise model, architecture and
-seed. Noise is injected at training time and resampled each epoch, so a
-fixed grid yields effectively unlimited training realizations — this is
-what makes the network amortized over noise level rather than tied to
-one realization.
+## What SIMORGH does
 
-## Quick start
+- **One network for many planets.** Planet radius ratio and surface
+  gravity are parameters the network is trained over, not constants
+  fixed per target, so a single trained model applies across a survey.
+- **Conditioned on the observation, not just the fluxes.** The network
+  reads each channel as a triplet of wavelength, depth and uncertainty,
+  and handles missing channels. One model therefore copes with different
+  binnings, different noise levels, and masked bad channels — including
+  the differences between independent reductions of the same data.
+- **Calibration is run, not assumed.** Simulation-based calibration
+  (Talts et al. 2018) and TARP joint coverage (Lemos et al. 2023) are
+  computed against a held-out grid, and the results are written out with
+  the model. A model without them is not treated as a usable result.
+- **A check on whether real data is in distribution.** A classifier
+  trained to separate simulated from observed spectra gives a single
+  number for how far real observations sit from the training set, and
+  per-spectrum weights for correcting coverage under that shift.
+- **Built for population work from the start.** Every trained model can
+  export posterior samples together with their densities and the prior
+  used during training, which is what hierarchical reweighting needs
+  (Hogg, Myers & Bovy 2010). Marginals alone are not enough, so this is
+  wired in from the beginning rather than added later.
+
+## Why sub-Neptunes, and why G395H
+
+The narrow scope is deliberate. A restricted parameter space —
+equilibrium temperatures of a few hundred to about 1100 K, high
+metallicities, clouds and hazes — keeps the training grid affordable. A
+uniformly reduced survey supplies matched nested-sampling posteriors to
+validate against, and lets the same planet be pushed through several
+controlled reductions to see how much the answer moves. And
+sub-Neptunes are themselves the interesting population: mass–metallicity
+trends and the chemistry across the radius valley are open questions
+that need many planets analysed the same way.
+
+Everything here generalizes to Ariel, which will observe this population
+at scale, but nothing depends on Ariel having launched.
+
+## How it works
+
+The forward model grid is generated once and stored. Observational noise
+is added during training and redrawn every epoch, so a fixed grid
+supplies effectively unlimited training examples and the network learns
+to handle a range of noise levels rather than memorizing one. Spectra
+are summarized by a small network applied to each channel and pooled in
+a way that does not care how many channels there are or what order they
+come in. A normalizing flow then maps that summary to the posterior.
+
+The flow works internally in transformed coordinates chosen so that the
+posterior can never place probability outside the prior box, and
+densities are converted back to physical units before they are handed
+out.
+
+```
+simorgh/
+  spectra.py      spectra with per-channel uncertainties and masks
+  priors.py       parameter ranges
+  simulate/       forward models (analytic test model, TauREx) and grids
+  models/         spectrum summary network and normalizing flow
+  diagnostics/    simulation-based calibration, TARP coverage
+  population/     hierarchical reweighting
+  gate/           in-distribution check for real data
+  io/             reading survey spectra from disk
+scripts/fir/      cluster scripts for DRAC Fir
+```
+
+## Getting started
 
 ```bash
 pip install -e ".[dev]"
-pytest tests/ -q          # ~1 min CPU; trains a small NPE end to end
+pytest tests/ -q
 ```
 
+The tests run in about a minute on a laptop and include training a small
+network end to end and checking that it recovers injected truths.
+
 ```python
-import numpy as np
 from simorgh.simulate import ToySubNeptune, g395h_grid
 from simorgh.priors import subneptune_prior
 from simorgh.train import train_npe
-from simorgh.diagnostics import sbc_ranks, sbc_pvalues
 
 sim, prior, grid = ToySubNeptune(), subneptune_prior(), g395h_grid()
-model, hist = train_npe(sim, prior, grid, n_sims=30_000, epochs=20)
+model, history = train_npe(sim, prior, grid, n_sims=15_000, epochs=20)
 model.save("runs/toy_v0")
 ```
 
-## Roadmap
+`ToySubNeptune` is an analytic stand-in with the right qualitative
+behaviour — feature amplitude scaling with temperature and mean
+molecular weight, clouds muting features, a CO2 band that strengthens
+with metallicity. It exists so the machinery can be developed and tested
+without waiting on a real grid. **It is not physics-grade and no
+scientific claim should rest on it.** Production runs use TauREx.
 
-- **Phase 0 (done):** working core on the toy simulator; calibration
-  diagnostics; population contract; OOD gate skeleton.
-- **Phase 1:** TauREx production grid on the cluster (~1e5–1e6 sims);
-  train the sub-Neptune network; validate planet-by-planet against the
-  survey's nested-sampling posteriors; reduction-variant stress test
-  (same planet, controlled reduction deltas — the sim-to-real number
-  nobody has measured for amortized methods). → Paper 1.
-- **Phase 2:** importance-sampling exactness layer; weighted conformal
-  prediction on the gate; accept/escalate rule with a guaranteed error
-  rate.
-- **Phase 3:** hierarchical population results on the survey; Ariel-tier
-  simulations; selection function for defined survey tiers.
+## Running on the cluster
 
-## Known gaps (kept visible on purpose)
+Real grids and training run on DRAC Fir. [FIR.md](FIR.md) has the
+runbook: environment setup, generating the grid as an array job,
+checking it is complete, training on a GPU, and running the calibration
+tests. Grid definitions are fixed and checksummed once created, and
+loading refuses a grid that is incomplete or assembled from
+inconsistent pieces, since training on part of a grid quietly changes
+the prior you are sampling from.
 
-- Toy simulator is structural, not physics-grade; nothing scientific may
-  be claimed from it.
-- TauREx adapter is untested against a real TauREx install.
-- Selection function defaults to alpha=1 (see caveat above).
-- Weighted CP not yet implemented; the gate currently scores shift but
-  does not yet restore coverage under it.
-- Embedding is DeepSets; attention pooling is the known upgrade if
-  fine spectral correlations start to matter.
+[TARGETS.md](TARGETS.md) records what the results should look like and
+what would count as failure.
+
+## Status
+
+Working: the network and training, calibration diagnostics, hierarchical
+reweighting, the in-distribution check, the cluster pipeline with
+checkpointing and restart, and 27 tests.
+
+Not yet done, and worth knowing before relying on any of it:
+
+- The TauREx interface is written but has not been run against a real
+  TauREx installation, so the production grid does not exist yet.
+- Correcting coverage under distribution shift is not implemented. The
+  in-distribution check currently reports how far real data sits from
+  the training set without adjusting for it.
+- Importance sampling to recover exact posteriors and evidences, as in
+  fm4ar, is planned.
+- Selection effects are not modelled. Population results are therefore
+  conditional on whichever targets happen to have been observed, which
+  is a real limitation for JWST programmes chosen by committee.
+
+## References
+
+Zingales & Waldmann (2018), AJ 156, 268 · Nixon & Madhusudhan (2020),
+MNRAS 496, 269 · Vasist et al. (2023), A&A 672, A147 · Aubin et al.
+(2023), ECML PKDD · Ardévol Martínez et al. (2024), A&A 681, A44 · Yip
+et al. (2024), MNRAS · Gebhard et al. (2025), A&A 693, A42 · Lueber et
+al. (2025), ApJL 984, L1 · Yip et al. (2026), Ariel MLWG white paper,
+RASTI · Talts et al. (2018), arXiv:1804.06788 · Lemos et al. (2023),
+ICML · Hogg, Myers & Bovy (2010), ApJ 725, 2166 · Rackham et al. (2018),
+ApJ 853, 122
