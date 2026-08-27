@@ -142,6 +142,20 @@ def main() -> int:
     repo = str(Path(args.repo).expanduser())
     log_dir.mkdir(parents=True, exist_ok=True)
 
+    # These paths are baked into sbatch files that run on a compute node,
+    # where a wrong one surfaces as an import error long after queueing.
+    # Fail here instead, while it is still cheap and obvious.
+    if not (Path(repo) / "simorgh" / "__init__.py").exists():
+        raise SystemExit(
+            f"--repo {repo} does not contain the simorgh package.\n"
+            "Point it at the repository checkout (the directory holding "
+            "pyproject.toml and simorgh/). Note that paths are "
+            "case-sensitive on Linux: ~/SIMORGH and ~/simorgh differ.")
+    if not (Path(venv) / "bin" / "activate").exists():
+        raise SystemExit(
+            f"--venv {venv} has no bin/activate.\n"
+            "Point it at the virtualenv the jobs should run in.")
+
     meta = read_grid_meta(Path(grid_dir))
     n_shards = meta["n_shards"]
     total = n_shards * meta["sims_per_shard"]
