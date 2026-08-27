@@ -238,8 +238,17 @@ def train_npe_grid(grid_dir: str | Path, out_dir: str | Path,
     if best_state is not None:
         model.load_state_dict(best_state)
     model.eval()
+    # A flow that ignored the spectrum and reproduced the prior would score
+    # the prior's own entropy. In logit coordinates the prior is standard
+    # logistic per dimension, whose differential entropy is exactly 2 nats,
+    # so that baseline is 2*d and anything at or above it means the network
+    # learned nothing from the data (the amortized "fit returns the prior").
+    prior_equivalent = 2.0 * prior.dim
+    history["prior_equivalent_loss"] = prior_equivalent
+    history["information_gain_nats"] = prior_equivalent - float(best_val)
     model.provenance["epochs_completed"] = epochs
     model.provenance["best_val_loss"] = float(best_val)
+    model.provenance["information_gain_nats"] = history["information_gain_nats"]
     model.save(out_dir / "final")
     (out_dir / "history.json").write_text(json.dumps(history, indent=2))
     return model, history

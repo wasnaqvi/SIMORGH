@@ -72,7 +72,15 @@ def main() -> int:
         context_dim=args.context_dim, transforms=args.transforms,
         hidden=tuple(args.hidden), resume=not args.no_resume)
 
+    gain = history["information_gain_nats"]
+    baseline = history["prior_equivalent_loss"]
     print(f"\nbest val loss: {min(history['val']):.3f}")
+    print(f"prior-only   : {baseline:.3f}  (a network ignoring the spectrum)")
+    print(f"info gain    : {gain:.3f} nats = {gain / 0.693:.1f} bits per spectrum")
+    if gain < 0.5:
+        print("  *** The network learned almost nothing from the spectra. "
+              "Check the\n      grid, the noise level, and that the "
+              "simulator varies with theta.")
     print(f"weights      : {Path(args.out_dir).expanduser() / 'best'}")
     print("\nNext: scripts/fir/certify.py to run SBC + TARP on this model.")
     return 0

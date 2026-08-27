@@ -203,3 +203,29 @@ def test_saved_model_carries_grid_provenance(small_grid, tmp_path):
     assert model.provenance["meta_hash"] == meta["meta_hash"]
     assert model.provenance["n_sims"] == 600
     assert model.provenance["simulator"]["engine"] == "toy"
+
+
+def test_information_gain_recorded(small_grid, tmp_path):
+    """A converged model must score below the prior-only baseline: in logit
+    coordinates the prior is standard logistic, entropy exactly 2 nats per
+    dimension, so 2*d is what a network that ignored the spectrum would
+    achieve. This is the amortized form of 'the fit returned the prior'."""
+    # A dedicated, larger grid: 600 simulations is genuinely too few for the
+    # flow to beat the prior, so the small fixture cannot test this.
+    prior, wl = subneptune_prior(), g395h_grid()
+    grid_dir = tmp_path / "gain_grid"
+    write_grid_meta(grid_dir, prior, wl, {"engine": "toy"},
+                    n_shards=3, sims_per_shard=2000, base_seed=3)
+    sim = ToySubNeptune()
+    for i in range(3):
+        generate_shard(grid_dir, i, sim)
+    run = tmp_path / "gain"
+    _, hist = train_npe_grid(grid_dir, run, epochs=30, batch_size=256,
+                             num_workers=0, context_dim=64, transforms=4,
+                             hidden=(64, 64), verbose=False)
+    assert hist["prior_equivalent_loss"] == 2.0 * prior.dim
+    assert hist["information_gain_nats"] == (
+        hist["prior_equivalent_loss"] - min(hist["val"]))
+    # 6000 sims and a small net, but it must still beat the prior outright
+    assert hist["information_gain_nats"] > 0.5, (
+        f"network barely beat the prior: {hist['information_gain_nats']:.2f} nats")
