@@ -33,7 +33,7 @@ virtualenv --no-download ~/simorgh/simorgh-env
 source ~/simorgh/simorgh-env/bin/activate
 
 pip install --no-index --upgrade pip
-pip install --no-index numpy scipy torch          # Alliance wheelhouse
+pip install --no-index numpy scipy torch matplotlib   # Alliance wheelhouse
 pip install zuko                                  # login node has internet
 pip install -e ~/simorgh/SIMORGH --no-deps
 ```
@@ -161,6 +161,29 @@ sbatch ~/simorgh/jobs/certify.sbatch
 Writes `certificate.json` and exits non-zero on FAIL, so a failed
 calibration is visible in `sacct` rather than buried in a log. `certify`
 warns if the certification grid hash matches the training grid.
+
+### 7. Plot it (login node, seconds)
+
+```bash
+python scripts/fir/plot_certificate.py --run-dir ~/scratch/simorgh/runs/taurex_v1_npe
+```
+
+Writes `certificate.png` (training curve with the prior-only baseline,
+SBC rank histograms, TARP coverage and its residual) and `posterior.png`
+(one example posterior with the truth marked). `--index N` picks a
+different example spectrum.
+
+**How to read the rank histograms**, which is the whole reason to look at
+them rather than at a p-value: flat is calibrated, a *slope* means the
+posterior is biased in that parameter, a *U* means it is too narrow
+(overconfident), and an *arch* means it is too wide. The grey band is the
+99% interval for a genuinely uniform histogram, so bars inside it are
+noise. A single KS p-value collapses all of that into one number and
+tells you none of it.
+
+On the TARP residual panel, above zero is conservative and below zero is
+overconfident. Overconfidence is the dangerous direction: it is what
+produces population results with tight, confidently wrong hyperposteriors.
 
 ## When a job fails
 

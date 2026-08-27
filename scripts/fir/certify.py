@@ -90,7 +90,11 @@ def main() -> int:
         "holdout_meta_hash": meta["meta_hash"],
         "n_sims": n, "n_post": args.n_post,
         "parameters": list(prior.names),
-        "sbc": {"ks_pvalues": pvals.tolist(),
+        # Ranks are kept, not just their p-values: the rank histogram is how
+        # SBC is actually read, and it shows the DIRECTION of a failure
+        # (sloped = biased, U-shaped = overconfident, arched = too wide),
+        # which a single p-value cannot.
+        "sbc": {"ks_pvalues": pvals.tolist(), "ranks": ranks.tolist(),
                 "threshold": SBC_P_THRESHOLD, "pass": sbc_pass},
         "tarp": {"alpha": alpha.tolist(), "ecp": ecp.tolist(),
                  "max_deviation": maxdev, "noise_floor": noise_floor,
