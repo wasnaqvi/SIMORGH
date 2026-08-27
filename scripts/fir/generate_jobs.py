@@ -82,8 +82,14 @@ export MKL_NUM_THREADS=$SLURM_CPUS_PER_TASK
 SIMULATE_BODY = """\
 # Idempotent: hash-matching shards are skipped, so resubmitting the whole
 # array after partial failures costs only the missing shards.
+#
+# GRID_DIR can be overridden at submit time WITHOUT regenerating this
+# script, which is how the held-out grid that certify.py needs gets built:
+#   GRID_DIR=~/scratch/simorgh/grids/foo_holdout sbatch --export=ALL --array=0-N <script>
+# (set it in the submitting shell; SLURM's --export=NAME=VALUE mangles
+# values containing commas.)
 python -u {repo}/scripts/fir/simulate_shard.py \\
-    --grid-dir {grid_dir} \\
+    --grid-dir "${{GRID_DIR:-{grid_dir}}}" \\
     --index $SLURM_ARRAY_TASK_ID
 """
 
