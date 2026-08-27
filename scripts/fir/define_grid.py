@@ -90,7 +90,24 @@ def main() -> int:
     print(f"channels     : {wavelength.size}  "
           f"({wavelength[0]:.3f}-{wavelength[-1]:.3f} um, R={args.resolution:g})")
     print(f"parameters   : {', '.join(prior.names)}")
-    print(f"\nNext: python scripts/fir/generate_jobs.py --grid-dir {grid_dir}")
+
+    repo = Path(__file__).resolve().parents[2]
+    last = args.n_shards - 1
+    if grid_dir.name.endswith("_holdout"):
+        # A held-out grid reuses the simulate job that already exists; the
+        # certify job is generated against the training grid and finds this
+        # one by name, so regenerating jobs here would be wrong.
+        print("\nHeld-out grid. Build its shards with the existing simulate "
+              "job (no need to\nregenerate jobs), from a shell with no venv "
+              "active:\n"
+              f"  GRID_DIR={grid_dir} sbatch --export=ALL "
+              f"--array=0-{last} ~/simorgh/jobs/simulate.sbatch")
+    else:
+        run_dir = Path("~/scratch/simorgh/runs").expanduser() / grid_dir.name
+        print(f"\nNext:\n  python {repo}/scripts/fir/generate_jobs.py \\\n"
+              f"      --grid-dir {grid_dir} \\\n"
+              f"      --run-dir {run_dir} \\\n"
+              f"      --job-dir ~/simorgh/jobs --repo {repo}")
     return 0
 
 
