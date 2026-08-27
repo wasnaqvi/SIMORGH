@@ -116,11 +116,24 @@ grid rather than training on it, because a partial grid silently changes
 the effective prior — the class of error that yields a plausible-looking
 network with no valid meaning.
 
-### 5. Train (one H100)
+### 5. Train (one GPU)
 
 ```bash
 sbatch ~/simorgh/jobs/train.sbatch
 ```
+
+Fir requires an explicit GPU model, so `generate_jobs.py` emits
+`--gpus-per-node=<type>:1` and `--gpu-type` selects it. Valid values are
+`h100` for a full 80 GB card and the MIG slices
+`nvidia_h100_80gb_hbm3_{3g.40gb,2g.20gb,1g.10gb}` for 3/7, 2/7 and 1/7 of
+one.
+
+The default is `h100`, but that is almost certainly more card than this
+job needs: the flow has a few million parameters and the likely
+bottleneck is CPU-side noise generation in the data loader. Run `seff` on
+the first real training job, and if GPU utilization is low regenerate
+with `--gpu-type nvidia_h100_80gb_hbm3_1g.10gb` — a slice queues sooner
+and costs the allocation less.
 
 Checkpoints every epoch to `<run-dir>/checkpoint.pt` and resumes
 automatically. A walltime kill costs one epoch, not the run — so prefer

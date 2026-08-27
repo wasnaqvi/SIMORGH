@@ -53,6 +53,16 @@ TRAIN_TIME = "6:00:00"
 TRAIN_MEM = "64G"
 TRAIN_CPUS = 8
 TRAIN_GPUS = 1
+# Fir requires an explicit GPU model. Valid values (2026-08):
+#   h100                            full 80 GB card
+#   nvidia_h100_80gb_hbm3_3g.40gb   MIG slice, 3/7 of a card, 40 GB
+#   nvidia_h100_80gb_hbm3_2g.20gb   MIG slice, 2/7 of a card, 20 GB
+#   nvidia_h100_80gb_hbm3_1g.10gb   MIG slice, 1/7 of a card, 10 GB
+# The flow is small and the likely bottleneck is CPU-side noise
+# generation in the data loader, not the GPU, so a MIG slice is usually
+# the right request: it queues sooner and burns less of the allocation.
+# Check `seff <jobid>` after the first real run before deciding.
+TRAIN_GPU_TYPE = "h100"
 
 CERTIFY_TIME = "1:00:00"
 CERTIFY_MEM = "16G"
@@ -131,6 +141,9 @@ def main() -> int:
     ap.add_argument("--account", default="def-ncowan")
     ap.add_argument("--venv", default="~/simorgh/simorgh-env")
     ap.add_argument("--repo", default="~/simorgh/SIMORGH")
+    ap.add_argument("--gpu-type", default=TRAIN_GPU_TYPE,
+                    help="Fir GPU model, e.g. h100 or "
+                         "nvidia_h100_80gb_hbm3_1g.10gb (default: %(default)s)")
     ap.add_argument("--python-module", default="python/3.13.2")
     ap.add_argument("--cuda-module", default="cuda/12.6")
     ap.add_argument("--epochs", type=int, default=100)
@@ -178,7 +191,8 @@ def main() -> int:
     train_sh = write(job_dir / "train.sbatch",
                      HEADER.format(name="simorgh_train", time=TRAIN_TIME,
                                    cpus=TRAIN_CPUS, mem=TRAIN_MEM,
-                                   extra=f"#SBATCH --gpus-per-node={TRAIN_GPUS}\n",
+                                   extra="#SBATCH --gpus-per-node="
+                                         f"{args.gpu_type}:{TRAIN_GPUS}\n",
                                    cuda_module=f" {args.cuda_module}", **common)
                      + TRAIN_BODY.format(repo=repo, grid_dir=grid_dir,
                                          run_dir=run_dir, epochs=args.epochs,
